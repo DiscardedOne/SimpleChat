@@ -1,0 +1,3 @@
+﻿# Prevent config secrets from being tracked
+appsettings*.json
+!appsettings.Development.json  # Optional: allow only dev config

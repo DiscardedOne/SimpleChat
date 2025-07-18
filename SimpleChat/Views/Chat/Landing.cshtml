@@ -1,0 +1,33 @@
+﻿@*
+    For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
+*@
+@model SimpleChat.Models.User
+@{
+    ViewData["Title"] = "Welcome!";
+}
+
+@using (Html.BeginForm("ChatPage", "Chat"))
+{
+    <div class="form-group">@Html.LabelFor(m => m.Name)</div>
+    <div class="form-group">@Html.TextBoxFor(m => m.Name, new { @class = "form-control" })</div>
+    @Html.ValidationMessageFor(m => m.Name, "", new { @class = "text-danger" })
+    <br />
+    <button type="submit" class="btn btn-outline-success">Join</button>
+}
+@*
+
+
+
+<div class="login-box">
+    <form>
+        <div class="form-group">
+            <label for="name">Name</label>
+            <input type="text" class="form-control" id="name" placeholder="Enter your name">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Join</button>
+    </form>
+</div>
+
+*@
+
+

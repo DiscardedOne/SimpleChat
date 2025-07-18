@@ -1,0 +1,93 @@
+﻿@model SimpleChat.Models.User
+@*
+    For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
+
+    <h1>Hello from ChatPage! @Model.Name</h1>
+*@
+@{
+    ViewData["Title"] = "SimpleChat";
+}
+
+<div class="container">
+    <div class="row">
+        <div class="col-md-3">
+            <div class="p-3 bg-light">
+                <div class="username m-2 mb-3 border-3 selected">
+                    Room Chat
+                </div>
+            </div>
+        </div>
+        <div class="col-md-9">
+            <div class="row me-1 mb-4">
+                <div class="container">
+                    <div class="d-flex justify-content-between">
+                        <div class="p-2 chatName">Room Chat</div>
+                        <div class="userContainer">
+                            <div class="ms-3 p-2 userCount">
+                                <svg
+                                    width="12" height="12"
+                                    viewBox="0 0 12 12"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    aria-hidden="true"
+                                    role="img"
+                                >
+                                    <defs>
+                                        <radialGradient id="onlineGrad" cx="30%" cy="30%" r="70%">
+                                            <stop offset="0%" stop-color="#6ee68c"/>
+                                            <stop offset="100%" stop-color="#28a745"/>
+                                        </radialGradient>
+                                        <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+                                            <feDropShadow dx="0" dy="0" stdDeviation="1" flood-color="rgba(0,0,0,0.3)"/>
+                                        </filter>
+                                    </defs>
+                                    <circle
+                                        cx="6" cy="6" r="5"
+                                        fill="url(#onlineGrad)"
+                                        filter="url(#shadow)"
+                                    />
+                                </svg>
+                                 <b><span id="onlineUserCount">--</span></b><span> | Online</span>
+                            </div>
+                            <div class="p-2 clientName">
+                                @using (Html.BeginForm("disconnectRedirect", "Chat"))
+                                {
+                                    <button id="clientName" type="submit" onclick="disconnectClient()" class="disconnectButton btn btn-outline-success p-2">@Model.Name</button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row me-1">
+                <div class="roomchat p-2 bg-light chatbox">
+                    @*<div class="userMsg">Hi there!</div>
+                    <div class="receiverMsg">This is receiver!</div>*@
+                </div>
+            </div>
+            <div class="row me-1 mb-4">
+                <div class="container">
+                    <div class="d-flex">
+                        <form class="w-100" onsubmit="sendMessage(); return false;">
+                            <div class="input-group">
+                                <div id="selectFiles" class="input-group-append">
+                                    <button class="btn btn-outline-success border-1" type="button" onclick="sendMessage()"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-paperclip-icon lucide-paperclip"><path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"/></svg></button>
+                                </div>
+                                <input type="text" class="form-control" placeholder="Message" aria-label="Message" id="messageInput">
+                                <div class="input-group-append">
+                                    <button id="sendFiles" class="btn btn-outline-success" type="button" onclick="sendMessage()">Send</button>
+                                </div>
+                                <input type="file" id="fileInput" multiple hidden/>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* <script src="~/lib/microsoft/signalr/dist/browser/signalr.js"></script> *@
+@* <script src="~/lib/microsoft/signalr/dist/browser/signalr.min.js"></script> *@
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js" integrity="sha512-7SRCYIJtR6F8ocwW7UxW6wGKqbSyqREDbfCORCbGLatU0iugBLwyOXpzhkPyHIFdBO0K2VCu57fvP2Twgx1o2A==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="~/js/chat.js"></script>
+<script src="~/js/chatfunc.js"></script>
