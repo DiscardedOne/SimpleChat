@@ -74,7 +74,7 @@ Under the hood, **SignalR** carries signaling messages (offers, answers, ICE can
 
 ## 🔗 Control Flow & Module Responsibilities
 
-### 1. Messaging & UI Module (`chat.js`)
+### 1. Messaging & UI Module
 
 * **Initialization (`site.js` + `chat.js`)**
 
@@ -106,7 +106,7 @@ Under the hood, **SignalR** carries signaling messages (offers, answers, ICE can
   * **Pause/Resume** → `toggleTransfer()` sends a control packet over DataChannel.
   * **Cancel** → `cancelTransfer()` signals peer and tears down state.
 
-### 2. File-Transfer & Utilities Module (`chatFunc.js`)
+### 2. File-Transfer & Utilities Module
 
 #### a) Key Management
 
