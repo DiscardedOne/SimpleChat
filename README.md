@@ -163,5 +163,22 @@ SimpleChat/
 ## 🤝 Contributing
 
 Feel free to open issues or PRs. Follow existing C# & JavaScript styles, include tests/docs for new features, and use GitHub Issues for bug reports or enhancements.
+We welcome contributions! Areas for improvement:
 
+- Decentralized Local App: Remove dependency on WebSocket connectivity by creating a purely HTML/CSS/JS local-only version; maintain a hosted web version with SignalR fallback via ASP.NET Core MVC.
+- Voice & Video Calling: Integrate real-time voice and video chat features using WebRTC audio/video streams.
+- SessionStore Improvements:
+	- Don’t store transient connectionId values in sessionStorage; use persistent User IDs instead.
+	- Store the current chatbox (group or user) in a session-store key to avoid looping through all chatboxes.
+	- Encrypt sessionStorage key names for enhanced security.
+- Offline & Notifications:
+	- Add message-read notifications and badges for unread messages.
+	- Option to save or bookmark particular chat threads for quick access.
+- Enhanced File Transfers:
+	- Leverage the File System Access API for direct disk writes, reducing IndexedDB/RAM dependence.
+	- Use TURN servers to improve peer connectivity and ensure reliable file transfers behind NATs.
+	- In finalizeFile(), if a hash mismatch occurs, identify missing packets and request retransmission of only those chunks.
+
+Please read our [Contributing Guidelines](https://github.com/DiscardedOne/SimpleChat/blob/main/CONTRIBUTING.md) before submitting pull requests.
+ 
 Happy chatting & secure file sharing! 🚀
