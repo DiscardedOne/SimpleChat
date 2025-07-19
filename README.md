@@ -1,183 +1,167 @@
 # SimpleChat
 
-**SimpleChat** is an ASP.NET Core MVC application that integrates real-time messaging with P2P file transfers using SignalR and WebRTC DataChannels. This README will guide you through the folder structure, architecture, control flow, and how each module connects—so you can understand, run, and contribute to the project.
+SimpleChat is a web-based chat application (live at [simplchat.azurewebsites.net](https://simplchat.azurewebsites.net/)) built on ASP.NET Core MVC. It offers real-time room chat and private messages, plus direct peer-to-peer file transfers— all from your browser. Think of it as a lightweight instant messenger: you join the room, see who’s online, exchange messages instantly, and share files securely, all without leaving the web page.
 
----
+## 🔑 Key Features
 
-## 📁 Folder Structure
+* **Real-Time Chat**: Broadcast messages to the entire room or have one-to-one private conversations. Instant updates powered by SignalR.
+* **P2P File Transfers**: Send files directly between browsers using WebRTC DataChannels—no heavy payloads on your server.
+* **Resumable, Chunked Transfers**: Files are split into ~64 KB chunks, each encrypted, sent, and persisted in IndexedDB. Interrupted transfers resume without retransmitting completed chunks.
+* **Pause / Resume / Cancel**: Full transfer control with UI buttons. Pause halts chunk sends, resume picks up at the correct offset, cancel tears down and cleans up state.
+* **Hybrid Encryption**: AES-GCM encrypts file data; the AES key is wrapped by the recipient’s RSA-OAEP public key. Only the intended peer can unwrap and decrypt.
+* **Safe Messaging**: All outgoing chat text is sanitized (via `sanitizeMessage()`) to strip invisible/control characters and prevent XSS, and validated to be under 24 KB (`isMessageUnder24KB()`).
+* **Smooth UX**: Online user count, dynamic chat tabs (created on first private message), auto‑scroll, and a Disconnect button with hover confirmation.
 
-```
+> Why hybrid? SignalR ensures everyone sees chat events; WebRTC DataChannels ensure efficient, low‑latency file streams directly between browsers.
+
+## 📁 Folder Structure & Components
+
+```text
 SimpleChat/
 ├─ Controllers/
-│   ├─ ChatController.cs         # Serves the chat page and handles chat-related MVC actions
-│   └─ HomeController.cs         # Serves landing/home and privacy pages
+│   ├── ChatController.cs       # MVC actions for login, join, and chat operations
+│   └── HomeController.cs       # Landing, index, and privacy pages
 │
 ├─ Hubs/
-│   └─ ChatHub.cs                # SignalR Hub: broadcast, personal messaging, file-transfer signaling
+│   └── ChatHub.cs              # SignalR hub: broadcastMessage, personalMessage, file-transfer signaling, ICE and SDP RPCs
 │
 ├─ Models/
-│   ├─ User.cs                   # Connected user representation
-│   ├─ FileMetadata.cs           # Metadata payload for file transfers
-│   └─ ErrorViewModel.cs         # Standard MVC error model
+│   ├── User.cs                 # Represents connected user details
+│   ├── FileMetadata.cs         # Carries metadata: name, size, type, chunk count, hash
+│   └── ErrorViewModel.cs       # Standard MVC error model
 │
 ├─ Utils/
-│   └─ Sanitizer.cs              # Sanitizes user messages against XSS
+│   └── Sanitizer.cs            # Helper to clean incoming messages
 │
 ├─ Views/
 │   ├─ Chat/
-│   │   ├─ ChatPage.cshtml       # Main chat UI with message input, chatboxes, file controls
-│   │   └─ Landing.cshtml        # Initial chat landing/login page
+│   │   ├── Landing.cshtml      # Username entry & join room
+│   │   └── ChatPage.cshtml     # Chat UI: message input, chat windows, file controls
 │   ├─ Home/
-│   │   ├─ Index.cshtml          # Homepage
-│   │   └─ Privacy.cshtml        # Privacy policy page
+│   │   ├── Index.cshtml        # Homepage
+│   │   └── Privacy.cshtml      # Privacy policy
 │   └─ Shared/
-│       ├─ _ViewImports.cshtml
-│       └─ _ViewStart.cshtml
+│       ├── _ViewImports.cshtml
+│       └── _ViewStart.cshtml
 │
 ├─ wwwroot/
-│   ├─ css/site.css              # Global styles
-│   ├─ lib/ …                    # Client libraries (e.g. SignalR client)
-│   ├─ site.js                   # Bootstraps UI: connection start, DOMContentLoaded hooks
-│   ├─ chat.js                   # **Messaging & UI Module** (SignalR events + DOM interactions)
-│   └─ chatFunc.js               # **File-Transfer & Utilities Module**
+│   ├── css/site.css            # Global styles
+│   ├── lib/…                   # Vendor libs (SignalR client, etc.)
+│   ├── site.js                 # **Placeholder** (currently empty)
+│   ├── chat.js                 # **Core Logic:** SignalR startup, event handlers, file-transfer orchestration, transfer UI rendering, initialization
+│   └── chatfunc.js             # **UI Logic:** click handlers for tabs, hover effects
 │
-├─ appsettings.json             # ASP.NET Core configuration
-├─ Program.cs                    # Application entry point and DI setup
-└─ SimpleChat.csproj             # Project manifest
+├─ appsettings.json             # Holds Azure SignalR connection string
+├─ Program.cs                   # App startup, DI, routing, middleware
+└── SimpleChat.csproj            # Project manifest
 ```
 
----
+## 🔄 Application Flows
 
-## 🚀 Application Overview
+### ⚡ Messaging Flow
 
-SimpleChat delivers:
+1. **Initialization** (`chat.js`)
 
-1. **Real-Time Chat**
+   * On `DOMContentLoaded`, `connection.start()` opens a SignalR connection to `/chat` and captures the `connectionId`.
+   * Store `connection.connectionId` as `sessionStorage.senderId`, set `sessionStorage.receiverId = 'room'`, and broadcast a system arrival message.
 
-   * Public broadcasts to the “room.”
-   * Private 1:1 messages between users.
+2. **Incoming Events** (`chat.js`)
 
-2. **Peer-to-Peer File Transfer**
+   * `UpdateUserCount`: refreshes online user indicator.
+   * `ReceiveMessage(user, message, type, connId, sConnId)`:
 
-   * Chunked, resumable transfers.
-   * Pause, resume, cancel controls.
-   * Local IndexedDB persistence for reliability.
+     * **system**: styled `.system` text appears in the room chat.
+     * **broadcast**: `<div class="receiverMsg">` added to `.chatbox.roomchat` with `<span class="chat_username">{user} ~</span>`.
+     * **personal**: if target chatbox exists, append there; else create new tab, register peer, then append.
 
-3. **End-to-End Hybrid Encryption**
+3. **Sending Messages** (`sendMessage()` in `chat.js`)
 
-   * AES-GCM for payload confidentiality.
-   * RSA-OAEP key wrap for AES keys.
+   * Identify active chatbox (`.chatbox:not([hidden])`).
+   * Sanitize via `sanitizeMessage()`, enforce size via `isMessageUnder24KB()`, drop empty/whitespace messages.
+   * Locally inject `<div class='userMsg'>`, scroll, then invoke SignalR:
 
-Under the hood, **SignalR** carries signaling messages (offers, answers, ICE candidates, metadata), while **WebRTC DataChannels** carry encrypted file chunks directly between peers.
+     * **Room**: `broadcastMessage(clientName, message, 'broadcast', '')`.
+     * **Private**: fetch `rConnId` from `sessionStorage[receiverName]`, then `personalMessage(clientName, message, 'personal', rConnId, senderId)`.
 
----
+4. **Tab Switching** (`chatfunc.js`)
 
-## 🔗 Control Flow & Module Responsibilities
+   * Inline click listeners handle `.username` elements, toggling `.chatbox` visibility and updating `sessionStorage.receiverId`.
 
-### 1. Messaging & UI Module
+### 📂 File Transfer Flow
 
-* **Initialization (`site.js` + `chat.js`)**
+1. **Setup & Quota**
 
-  * Establishes a SignalR `HubConnection` to `/chat`.
-  * Configures keep-alive and timeout intervals.
+   * On load, reserve 50% of `navigator.deviceMemory` (or 1 GB fallback) as `sessionStorage.availableMemory`.
+   * Select Files → validate `sessionStorage.receiverId` is a valid peer → for each file, generate key, call `createTransferUI()`.
 
-* **Event Handlers**
+2. **Metadata Exchange**
 
-  * **`UpdateUserCount`**: Refreshes online user counter.
-  * **`ReceiveMessage`**: Inserts system, broadcast, or personal messages into the correct chatbox.
-  * **`DisconnectUser`**, **`DuplicateUser`**: Handles user departures and name collisions.
+   * Compute `totalChunks`, `fileHash` (SHA‑256 via `computeHash()`), and populate metadata.
+   * Send via `connection.invoke('SendFileMetadata', metadata)`.
+   * On `ReceiveFileMetadata`, compare `metadata.fileSize` vs. `availableMemory`; on accept, deduct quota, setup RTCPeerConnection and `setupDataChannel()`, then `ConfirmTransfer`.
 
-* **Sending Messages**
+3. **Buffer‑Threshold Detection**
 
-  * **`sendMessage()`** reads the active chatbox, sanitizes via `sanitizeMessage()`, checks size with `isMessageUnder24KB()`, then invokes either `broadcastMessage` or `personalMessage` on the hub.
-  * Clears input and scrolls to bottom (`scrollToBottom()`).
+   * First chunk send uses `detectMaxBufferedAmount()` to determine ideal `maxBuffer` for the DataChannel via `getBufferThreshold()`.
 
-* **UI Event Binding**
+4. **Chunk Sending** (`TransferManager`)
 
-  * **Disconnect Button**: Hover toggles label and styling. Stores user name in `sessionStorage`.
-  * **Username Click**: Switches visible chatbox (`roomchat` vs. `<user>Chat`), updates `.chatName`, and sets `receiverId` in `sessionStorage`.
+   * `sendNextChunk()` handles offsets, flow control (`waitForDrain(dataChannel, maxBuffer)`), slice → `makePacket()` → `dataChannel.send()`, and updates UI (`updateProgress()`, stats).
+   * Honors `paused`/`canceled` flags, auto‑cancels on repeated drain timeouts.
 
-* **File-Selection & Metadata**
+5. **Chunk Receiving** (`receiveChunk()`)
 
-  * File input change → create metadata (size, chunks, hash) → display UI element (`createTransferUI()`) → send metadata via SignalR (`SendFileMetadata`).
+   * `unwrapPacket()` decrypts (AES‑GCM + RSA‑OAEP) or falls back to plaintext JSON on failure.
+   * **SOF**: store sender’s public key, init state.
+   * **chunk**: persist via `saveChunk()`, update UI; on completion, call `finalizeFile()`.
 
-* **Transfer Controls**
+6. **Finalization & Controls**
 
-  * **Pause/Resume** → `toggleTransfer()` sends a control packet over DataChannel.
-  * **Cancel** → `cancelTransfer()` signals peer and tears down state.
+   * `finalizeFile()`: loads slices from IndexedDB, assembles Blob, verifies SHA‑256 via `computeHash()`, injects a 2‑minute-expiring download link, restores memory quota.
+   * UI buttons (pause/resume/cancel), `<progress>` bar, speed/ETA (`formatETA()`), and status labels are enabled/disabled via `createTransferUI()` as state changes.
 
-### 2. File-Transfer & Utilities Module
+### 🔧 SignalR Hub Methods & Events
 
-#### a) Key Management
+* **Client → Server RPCs**: `broadcastMessage`, `personalMessage`, `SendFileMetadata`, `ConfirmTransfer`, `SendIceCandidate`, `SendOffer`, `SendAnswer`.
+* **Server → Client Events**: `ReceiveMessage`, `ReceiveFileMetadata`, `ReceiveIceCandidate`, `ReceiveOffer`, `ReceiveAnswer`, and disconnect notifications.
 
-* On load, generates an RSA-OAEP keypair: stores `_myPrivateKey` (in-memory) and public key (SPKI) in `sessionStorage`.
+### 🛠️ Utilities
 
-#### b) Packet & Encryption
+* `sanitizeMessage()`: strip control/XSS chars.
+* `isMessageUnder24KB()`: enforce size limit.
+* `computeHash()`: SHA‑256 hash of Blob.
+* `detectMaxBufferedAmount()` / `getBufferThreshold()`: DataChannel buffer calibration.
+* `formatFileSize()`, `formatETA()`, `sleep()`, and key‑import helpers.
 
-* **`makePacket(meta, chunk)`**: Packs metadata + optional chunk, then attempts:
+## 🛠️ Setup & Running Locally
 
-  1. AES-GCM encryption of the combined buffer.
-  2. RSA-OAEP wrapping of the AES key with peer’s public key.
+1. **Clone & Build**
 
-  * Falls back to plaintext on error.
+   ```bash
+   git clone https://github.com/DiscardedOne/SimpleChat.git
+   cd SimpleChat
+   dotnet restore && dotnet build
+   ```
+2. **Configure Azure SignalR**
+   In `appsettings.json`:
 
-* **`unwrapPacket(buffer)`**: Inverse of `makePacket()`: unwrap AES key, decrypt, parse metadata and chunk.
+   ```json
+   "ConnectionStrings": { "AzureSignalREndpoint": "<YOUR_AZURE_SIGNALR_CONNECTION>" }
+   ```
+3. **Run**
 
-#### c) Transfer State & Concurrency
+   ```bash
+   dotnet run
+   ```
 
-* Global **`transfers`** object tracks each file’s state: offsets, paused/canceled flags, UI references.
-* **`TransferManager`** class: queues multiple files, limits concurrent chunk sends (default 3), and calls `sendNextChunk()`.
+   App listens on [https://localhost:5140](https://localhost:5140).
+4. **Test**
+   Open multiple browsers/incognito sessions at [https://localhost:5140](https://localhost:5140), join with unique usernames, and test messaging/file transfers.
 
-#### d) Chunked Sending (`sendNextChunk()`)
-
-* **Initialization**: sets `_offset`, `_idx`, calculates buffer threshold (`getBufferThreshold()`), sends SOF packet. Enables UI controls.
-* **Flow Control**: waits on `waitForDrain()` when `dataChannel.bufferedAmount` exceeds threshold.
-* **Chunk Send**: slices file Blob by `CHUNK_SIZE`, encrypts slice, `dataChannel.send()`, updates progress & stats.
-* **Completion**: on `_offset >= file.size`, updates UI, cleans state, and frees memory.
-
-#### e) Chunked Receiving (`receiveChunk()`)
-
-* Decrypts/unpacks packet, then:
-
-  * **SOF**: initialize receive counters, UI controls.
-  * **chunk**: saves to IndexedDB (`saveChunk()`), updates progress, and if all chunks present, invokes `finalizeFile()`.
-  * **Control**: processes pause/cancel signals.
-
-* **`finalizeFile()`**: reassembles buffered chunks, verifies SHA‑256 hash, and publishes a temporary download link (expires in 2 minutes).
-
-#### f) Helpers & Persistence
-
-* IndexedDB helpers: `openDb()`, `saveChunk()`, `loadAllChunks()`, `clearChunks()`.
-* Utilities: `computeHash()`, `sleep()`, `preTransferChecks()`, `detectMaxBufferedAmount()`, `getBufferThreshold()`, `waitForDrain()`, `getEffectiveElapsedMs()`, `formatETA()`, `formatFileSize()`.
-
----
-
-## 🛠️ Setup & Running
-
-```bash
-# Clone repository
-git clone https://github.com/your-username/SimpleChat.git
-cd SimpleChat
-
-# Restore dependencies & build
-dotnet restore
-dotnet build
-
-# Run web server
-dotnet run
-```
-
-Open your browser at `https://localhost:5140`. Use multiple tabs/windows to simulate multiple users. Test messaging, private chat, and file transfers.
-
----
+> Note: Even for local development you need an Azure SignalR instance (**free tier available**).
 
 ## 🤝 Contributing
 
-* Report bugs or suggest enhancements via GitHub Issues.
-* PRs should include tests and docs updates.
-* Follow existing code style and patterns.
+Feel free to open issues or PRs. Follow existing C# & JavaScript styles, include tests/docs for new features, and use GitHub Issues for bug reports or enhancements.
 
----
-
-*Happy chatting!* 🚀
-
+Happy chatting & secure file sharing! 🚀
